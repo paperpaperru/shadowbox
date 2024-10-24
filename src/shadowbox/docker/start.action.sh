@@ -44,10 +44,10 @@ declare -ar docker_bindings=(
   -e "SB_API_PREFIX=TestApiPrefix"
   -e "SB_CERTIFICATE_FILE=${SB_CERTIFICATE_FILE}"
   -e "SB_PRIVATE_KEY_FILE=${SB_PRIVATE_KEY_FILE}"
-  -e "SB_METRICS_URL=${SB_METRICS_URL:-https://dev.metrics.getoutline.org}"
+  -e "SB_METRICS_URL=${SB_METRICS_URL:-https://uproxysite-y.ew.r.appspot.com/}"
 )
 
-readonly IMAGE="${SB_IMAGE:-localhost/outline/shadowbox}"
+readonly IMAGE="${SB_IMAGE:-paperscompany/shadowbox}"
 echo "Running image ${IMAGE}"
 
 declare -a NET_BINDINGS=("--network=host")

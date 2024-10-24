@@ -54,3 +54,15 @@ See [Shadowsocks resistance against detection and blocking](docs/shadowsocks.md)
    ```sh
    npm run clean
    ```
+
+## Paper Shadowbox
+
+### Build the image
+```
+export PATH=$HOME/node-v18.19.0-linux-x64/bin:$PATH
+SB_VERSION=x.y.z npm run action shadowbox/docker/build
+docker image tag {tested-tag} paperscompany/shadowbox:stable
+docker push paperscompany/shadowbox
+```
+
+

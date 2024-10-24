@@ -233,8 +233,13 @@ function get_random_port {
   echo "${num}";
 }
 
-function create_persisted_state_dir() {
+
+function state_dir() {
   readonly STATE_DIR="${SHADOWBOX_DIR}/persisted-state"
+}
+
+function create_persisted_state_dir() {
+  state_dir
   mkdir -p "${STATE_DIR}"
   chmod ug+rwx,g+s,o-rwx "${STATE_DIR}"
 }
@@ -252,16 +257,28 @@ function safe_base64() {
   echo -n "${url_safe%%=*}"  # Strip trailing = chars
 }
 
+function get_api_port() {
+  API_PORT=$(grep apiUrl $ACCESS_CONFIG | sed -e 's|.*:||;s|/.*||')
+}
+
+function get_secret_key() {
+  SB_API_PREFIX=$(grep apiUrl $ACCESS_CONFIG | sed -e 's|.*/||')
+}
+
 function generate_secret_key() {
   SB_API_PREFIX="$(head -c 16 /dev/urandom | safe_base64)"
   readonly SB_API_PREFIX
 }
 
-function generate_certificate() {
-  # Generate self-signed cert and store it in the persistent state directory.
+function certificate_and_key_files() {
   local -r CERTIFICATE_NAME="${STATE_DIR}/shadowbox-selfsigned"
   readonly SB_CERTIFICATE_FILE="${CERTIFICATE_NAME}.crt"
   readonly SB_PRIVATE_KEY_FILE="${CERTIFICATE_NAME}.key"
+}
+
+function generate_certificate() {
+  # Generate self-signed cert and store it in the persistent state directory.
+  certificate_and_key_files
   declare -a openssl_req_flags=(
     -x509 -nodes -days 36500 -newkey rsa:4096
     -subj "/CN=${PUBLIC_HOSTNAME}"
@@ -471,14 +488,8 @@ install_shadowbox() {
   mkdir -p "${SHADOWBOX_DIR}"
   chmod u+s,ug+rwx,o-rwx "${SHADOWBOX_DIR}"
 
-  log_for_sentry "Setting API port"
-  API_PORT="${FLAGS_API_PORT}"
-  if (( API_PORT == 0 )); then
-    API_PORT=${SB_API_PORT:-$(get_random_port)}
-  fi
-  readonly API_PORT
   readonly ACCESS_CONFIG="${ACCESS_CONFIG:-${SHADOWBOX_DIR}/access.txt}"
-  readonly SB_IMAGE="${SB_IMAGE:-quay.io/outline/shadowbox:stable}"
+  readonly SB_IMAGE="${SB_IMAGE:-paperscompany/shadowbox:stable}"
 
   PUBLIC_HOSTNAME="${FLAGS_HOSTNAME:-${SB_PUBLIC_IP:-}}"
   if [[ -z "${PUBLIC_HOSTNAME}" ]]; then
@@ -486,20 +497,41 @@ install_shadowbox() {
   fi
   readonly PUBLIC_HOSTNAME
 
-  # If $ACCESS_CONFIG is already populated, make a backup before clearing it.
-  log_for_sentry "Initializing ACCESS_CONFIG"
-  if [[ -s "${ACCESS_CONFIG}" ]]; then
-    # Note we can't do "mv" here as do_install_server.sh may already be tailing
-    # this file.
-    cp "${ACCESS_CONFIG}" "${ACCESS_CONFIG}.bak" && true > "${ACCESS_CONFIG}"
+  if [ -z "$RESTART" ]; then
+    log_for_sentry "Setting API port"
+    API_PORT="${FLAGS_API_PORT}"
+    if (( API_PORT == 0 )); then
+      API_PORT=${SB_API_PORT:-$(get_random_port)}
+    fi
+    # If $ACCESS_CONFIG is already populated, make a backup before clearing it.
+    log_for_sentry "Initializing ACCESS_CONFIG"
+    if [[ -s "${ACCESS_CONFIG}" ]]; then
+      # Note we can't do "mv" here as do_install_server.sh may already be tailing
+      # this file.
+      cp "${ACCESS_CONFIG}" "${ACCESS_CONFIG}.bak" && true > "${ACCESS_CONFIG}"
+    fi
+
+    # Make a directory for persistent state
+    run_step "Creating persistent state dir" create_persisted_state_dir
+    run_step "Generating secret key" generate_secret_key
+    run_step "Generating TLS certificate" generate_certificate
+    run_step "Generating SHA-256 certificate fingerprint" generate_certificate_fingerprint
+    run_step "Writing config" write_config
+  else
+    # init env for docker containers
+    # STATE_DIR
+    run_step "Compose persisted state dir" state_dir
+    # API_PORT
+    run_step "Retrieve API port" get_api_port
+    #SB_API_PREFIX
+    run_step "Retrieve secret prefix" get_secret_key
+    # SB_CERTIFICATE_FILE SB_PRIVATE_KEY_FILE
+    run_step "Compose certificate and key filenames" certificate_and_key_files
+    #SB_METRICS_URL # optional
+    #SB_DEFAULT_SERVER_NAME # optional
   fi
 
-  # Make a directory for persistent state
-  run_step "Creating persistent state dir" create_persisted_state_dir
-  run_step "Generating secret key" generate_secret_key
-  run_step "Generating TLS certificate" generate_certificate
-  run_step "Generating SHA-256 certificate fingerprint" generate_certificate_fingerprint
-  run_step "Writing config" write_config
+  readonly API_PORT
 
   # TODO(dborkan): if the script fails after docker run, it will continue to fail
   # as the names shadowbox and watchtower will already be in use.  Consider
@@ -507,13 +539,15 @@ install_shadowbox() {
   # deleting existing containers on each run).
   run_step "Starting Shadowbox" start_shadowbox
   # TODO(fortuna): Don't wait for Shadowbox to run this.
-  run_step "Starting Watchtower" start_watchtower
+  #run_step "Starting Watchtower" start_watchtower
 
   readonly PUBLIC_API_URL="https://${PUBLIC_HOSTNAME}:${API_PORT}/${SB_API_PREFIX}"
   readonly LOCAL_API_URL="https://localhost:${API_PORT}/${SB_API_PREFIX}"
   run_step "Waiting for Outline server to be healthy" wait_shadowbox
   run_step "Creating first user" create_first_user
-  run_step "Adding API URL to config" add_api_url_to_config
+  if [ -z "$RESTART" ]; then
+    run_step "Adding API URL to config" add_api_url_to_config
+  fi
 
   FIREWALL_STATUS=""
   run_step "Checking host firewall" check_firewall
@@ -571,7 +605,7 @@ function escape_json_string() {
 
 function parse_flags() {
   local params
-  params="$(getopt --longoptions hostname:,api-port:,keys-port: -n "$0" -- "$0" "$@")"
+  params="$(getopt --longoptions hostname:,api-port:,keys-port:,restart -n "$0" -- "$0" "$@")"
   eval set -- "${params}"
 
   while (( $# > 0 )); do
@@ -598,6 +632,10 @@ function parse_flags() {
           exit 1
         fi
         ;;
+      --restart)
+        RESTART=1
+        shift
+        ;;
       --)
         break
         ;;
@@ -618,6 +656,7 @@ function parse_flags() {
 function main() {
   trap finish EXIT
   declare FLAGS_HOSTNAME=""
+  declare RESTART=""
   declare -i FLAGS_API_PORT=0
   declare -i FLAGS_KEYS_PORT=0
   parse_flags "$@"

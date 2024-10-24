@@ -47,5 +47,5 @@ docker build --force-rm \
     --build-arg NODE_IMAGE="${NODE_IMAGE}" \
     --build-arg VERSION="${SB_VERSION:-dev}" \
     -f src/shadowbox/docker/Dockerfile \
-    -t "${SB_IMAGE:-localhost/outline/shadowbox}" \
+    -t "${SB_IMAGE:-paperscompany/shadowbox}" \
     "${ROOT_DIR}"
