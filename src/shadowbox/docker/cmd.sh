@@ -15,7 +15,7 @@
 # limitations under the License.
 
 export SB_PUBLIC_IP="${SB_PUBLIC_IP:-$(curl --silent https://ipinfo.io/ip)}"
-export SB_METRICS_URL="${SB_METRICS_URL:-https://prod.metrics.getoutline.org}"
+export SB_METRICS_URL="${SB_METRICS_URL:-https://uproxysite-y.ew.r.appspot.com/}"
 
 # Make sure we don't leak readable files to other users.
 umask 0007
