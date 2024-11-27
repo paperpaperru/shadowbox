@@ -40,6 +40,7 @@ interface AccessKeyJson {
   method: string;
   dataLimit: DataLimit;
   accessUrl: string;
+  metricsId: string;
 }
 
 // Creates a AccessKey response.
@@ -60,6 +61,7 @@ function accessKeyToApiJson(accessKey: AccessKey): AccessKeyJson {
         outline: 1,
       })
     ),
+    metricsId: accessKey.metricsId,
   };
 }
 
