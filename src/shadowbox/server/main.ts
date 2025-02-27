@@ -145,6 +145,7 @@ async function main() {
   };
 
   const ssMetricsLocation = `127.0.0.1:${ssMetricsPort}`;
+  const ssMetricsExposure = `0.0.0.0:${ssMetricsPort}`;
   logging.info(`outline-ss-server metrics is at ${ssMetricsLocation}`);
   prometheusConfigJson.scrape_configs.push({
     job_name: 'outline-server-ss',
@@ -154,7 +155,7 @@ async function main() {
     getBinaryFilename('outline-ss-server'),
     getPersistentFilename('outline-ss-server/config.yml'),
     verbose,
-    ssMetricsLocation
+    ssMetricsExposure
   );
   if (fs.existsSync(MMDB_LOCATION_COUNTRY)) {
     shadowsocksServer.configureCountryMetrics(MMDB_LOCATION_COUNTRY);
